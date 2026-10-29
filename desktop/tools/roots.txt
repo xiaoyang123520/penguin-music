@@ -1,0 +1,55 @@
+# Pinned first (first-seen wins): kotlin stdlib / coroutines / serialization
+org.jetbrains.kotlin:kotlin-stdlib:2.1.20
+org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2
+org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.0
+org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.6.2
+org.jetbrains:annotations:24.0.1
+# Compose Multiplatform 1.8.0
+org.jetbrains.compose.ui:ui-desktop:1.8.0
+org.jetbrains.compose.ui:ui-graphics-desktop:1.8.0
+org.jetbrains.compose.ui:ui-text-desktop:1.8.0
+org.jetbrains.compose.ui:ui-unit-desktop:1.8.0
+org.jetbrains.compose.ui:ui-geometry-desktop:1.8.0
+org.jetbrains.compose.ui:ui-tooling-preview-desktop:1.8.0
+org.jetbrains.compose.foundation:foundation-desktop:1.8.0
+org.jetbrains.compose.foundation:foundation-layout-desktop:1.8.0
+org.jetbrains.compose.material3:material3-desktop:1.8.0
+org.jetbrains.compose.material:material-icons-extended-desktop:1.7.3
+org.jetbrains.compose.material:material-icons-core-desktop:1.7.3
+org.jetbrains.compose.material:material-ripple-desktop:1.8.0
+org.jetbrains.compose.runtime:runtime-desktop:1.8.0
+org.jetbrains.compose.runtime:runtime-saveable-desktop:1.8.0
+org.jetbrains.compose.animation:animation-desktop:1.8.0
+org.jetbrains.compose.animation:animation-core-desktop:1.8.0
+org.jetbrains.compose.components:components-resources-desktop:1.8.0
+org.jetbrains.compose.desktop:desktop-jvm-linux-x64:1.8.0
+org.jetbrains.compose.desktop:desktop-jvm-windows-x64:1.8.0
+# JetBrains androidx (lifecycle / navigation)
+org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-desktop:2.9.0-alpha06
+org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-desktop:2.9.6
+org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-desktop:2.9.6
+org.jetbrains.androidx.navigation:navigation-compose-desktop:2.9.2
+# DataStore (Google Maven, JVM variants)
+androidx.datastore:datastore-core-jvm:1.1.4
+androidx.datastore:datastore-preferences-core-jvm:1.1.4
+# Paging (Google Maven, desktop variants)
+androidx.paging:paging-common-desktop:3.4.0
+androidx.paging:paging-compose-desktop:3.4.0
+# Ktor 3.1.1
+io.ktor:ktor-client-core-jvm:3.1.1
+io.ktor:ktor-client-okhttp-jvm:3.1.1
+io.ktor:ktor-client-logging-jvm:3.1.1
+io.ktor:ktor-client-content-negotiation-jvm:3.1.1
+io.ktor:ktor-client-encoding-jvm:3.1.1
+io.ktor:ktor-serialization-kotlinx-json-jvm:3.1.1
+# Coil 3.0.4
+io.coil-kt.coil3:coil-compose-jvm:3.0.4
+io.coil-kt.coil3:coil-network-okhttp-jvm:3.0.4
+# Misc
+sh.calvin.reorderable:reorderable-jvm:2.4.3
+com.google.protobuf:protobuf-kotlin-lite:4.29.1
+com.google.protobuf:protobuf-javalite:4.29.1
+com.github.luben:zstd-jni:1.5.6-6
+javazoom:jlayer:1.0.1
+com.google.zxing:core:3.5.3
+net.java.dev.jna:jna:5.14.0

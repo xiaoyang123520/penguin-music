@@ -1,0 +1,295 @@
+package com.jussicodes.music.data
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.jussicodes.music.constants.pinnedAlbumIdsKey
+import com.jussicodes.music.constants.pinnedAlbumColumnsKey
+import com.jussicodes.music.constants.pinnedAlbumsAccountKey
+import com.jussicodes.music.constants.pinnedAlbumsCacheKey
+import com.jussicodes.music.constants.pinnedAlbumsHiddenKey
+import com.jussicodes.music.constants.userIdKye
+import com.jussicodes.music.utils.dataStore
+import com.rcmiku.ncmapi.api.album.AlbumApi
+import com.rcmiku.ncmapi.model.Album
+import com.rcmiku.ncmapi.model.Song
+import com.rcmiku.ncmapi.utils.json
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.encodeToString
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * 主页"置顶专辑墙"的唯一数据源（按账号作用域，cookie 变化自动失效旧缓存）。
+ *
+ *  1. 磁盘缓存（DataStore）：[loadCache] 在 App 启动时把上次的内容灌进共享
+ *     [albums]，专辑墙首帧就有封面；
+ *  2. 网络同步（[sync]）：并发拉取每个置顶专辑的详情（封面 + 曲目），成功才
+ *     回写缓存并更新 dedup 标记——全失败时不动标记，下次 [sync] 会重试
+ *     （修复旧实现"失败即锁死、ids 不变就永不重试"的 bug）；
+ *  3. 本地写操作（[togglePin] / [reorder] / [applyPinned]）：内存 + 落盘即时生效。
+ *
+ * 曲目缓存在 [songCache]（内存，进程内有效）：专辑墙双击封面循环播放 /
+ * 编辑菜单"播放整张"直接命中，不重复请求 /album。
+ */
+object PinnedAlbumStore {
+
+    private const val GUEST_KEY = "guest"
+
+    /** 同一账号去重窗口：窗口内对相同 ids 的 [sync] 直接跳过（force 除外）。 */
+    private const val REFRESH_DEDUPE_MS = 15_000L
+
+    private val mutex = Mutex()
+
+    @Volatile
+    private var store: DataStore<Preferences>? = null
+
+    private val _albums = MutableStateFlow<List<Album>>(emptyList())
+    val albums: StateFlow<List<Album>> = _albums.asStateFlow()
+
+    /**
+     * 专辑墙关闭标志（进程级）：null = DataStore 尚未出值；出值后持续跟 DataStore 回流。
+     * 提到单例是因为 LibraryScreen 在 tab 切换重组合时 remember 会复位——"首帧不渲染卡片"
+     * 的门控若跟着复位，切回主页就会先闪一帧空墙再弹满（用户反馈的"闪一下"）。
+     */
+    private val _hiddenState = MutableStateFlow<Boolean?>(null)
+    val hiddenState: StateFlow<Boolean?> = _hiddenState.asStateFlow()
+
+    private val watcherScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 启动时调用一次：持续跟 DataStore 的关闭标志回流进 [hiddenState]。 */
+    fun watchHidden(context: Context) {
+        val ds = context.applicationContext.dataStore
+        watcherScope.launch {
+            ds.data.collect { prefs -> _hiddenState.value = prefs[pinnedAlbumsHiddenKey] ?: false }
+        }
+    }
+
+    /** 磁盘缓存是否已读完（冷启动首帧为 false；UI 用它区分"还没到"与"确实为空"）。 */
+    private val _cacheLoaded = MutableStateFlow(false)
+    val cacheLoaded: StateFlow<Boolean> = _cacheLoaded.asStateFlow()
+
+    /** 上一次成功同步的账号 + ids + 时间，用于去重；失败不更新。 */
+    @Volatile
+    private var lastSyncedAccount: String = ""
+
+    @Volatile
+    private var lastSyncedIds: List<Long> = emptyList()
+
+    @Volatile
+    private var lastSyncedAt: Long = 0L
+
+    /** albumId -> 曲目，进程内有效。 */
+    private val songCache = ConcurrentHashMap<Long, List<Song>>()
+
+    /** 必须在 Application.onCreate 里调用一次。 */
+    fun init(context: Context) {
+        if (store == null) store = context.applicationContext.dataStore
+    }
+
+    /** 已缓存的专辑曲目；未缓存返回 null（调用方自行拉取后 [cacheAlbumSongs]）。 */
+    fun getAlbumSongs(albumId: Long): List<Song>? = songCache[albumId]
+
+    fun cacheAlbumSongs(albumId: Long, songs: List<Song>) {
+        songCache[albumId] = songs
+    }
+
+    /** 读磁盘缓存灌 [albums]（启动时调用）；账号不匹配时清掉旧内容。 */
+    suspend fun loadCache() {
+        val s = store ?: return
+        val prefs = s.data.first()
+        val storedAccount = prefs[pinnedAlbumsAccountKey].orEmpty()
+        val acc = accountKey()
+        // 旧版指纹是 cookie 哈希 hex（会误判掉墙）；非 uid: 前缀一律视为旧格式，不清墙，
+        // 下次 persist 自动改写为新格式。
+        if (storedAccount.startsWith("uid:") && storedAccount != acc) {
+            _albums.value = emptyList()
+            _cacheLoaded.value = true
+            return
+        }
+        val ids = readIds(prefs)
+        val raw = prefs[pinnedAlbumsCacheKey].orEmpty()
+        val cached = if (raw.isNotBlank()) {
+            runCatching { json.decodeFromString<List<Album>>(raw) }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        val ordered = if (ids.isEmpty()) cached else ids.mapNotNull { id ->
+            cached.firstOrNull { it.id == id }
+        }
+        if (ordered.isNotEmpty()) {
+            _albums.value = ordered
+        }
+        _cacheLoaded.value = true
+    }
+
+    /**
+     * 并发拉取专辑详情（封面 + 曲目）并回写缓存。[extraIds] 用于把尚未入库的新
+     * 专辑一并拉下来（[applyPinned] 走这个）。返回是否成功：全失败时不动 dedup
+     * 标记，下次调用会重试。
+     */
+    suspend fun sync(
+        force: Boolean = false,
+        extraIds: List<Long> = emptyList(),
+        seeds: List<Album> = emptyList()
+    ): Boolean {
+        return mutex.withLock {
+            loadCache()
+            val acc = accountKey()
+            if (acc == GUEST_KEY) return@withLock false
+            val ids = (_albums.value.map { it.id } + extraIds).distinct()
+            if (ids.isEmpty()) {
+                // 内存空不等于用户清空：可能刚 [loadCache] 因账号不匹配被清（旧数据还在磁盘）。
+                // 这里只清内存、不动磁盘——真清空由 togglePin/applyPinned 显式 persist，
+                // 旧的账号数据保留在磁盘，切回原账号还能恢复。
+                _albums.value = emptyList()
+                return@withLock true
+            }
+            val now = System.currentTimeMillis()
+            if (
+                !force && acc == lastSyncedAccount &&
+                ids == lastSyncedIds && now - lastSyncedAt < REFRESH_DEDUPE_MS
+            ) {
+                return@withLock true
+            }
+            val results = kotlinx.coroutines.coroutineScope {
+                ids.map { id ->
+                    async(Dispatchers.IO) {
+                        AlbumApi.albumDetail(id).getOrNull()
+                    }
+                }.awaitAll()
+            }
+            val found = results.filterNotNull()
+            val seedById = seeds.associateBy { it.id }
+            val cachedById = _albums.value.associateBy { it.id }
+            // 详情拉不到的 id 回退 缓存 > 弹窗种子数据，保证选中的一定上墙
+            val ordered = ids.mapNotNull { albumId ->
+                found.firstOrNull { it.album.id == albumId }?.album
+                    ?: cachedById[albumId]
+                    ?: seedById[albumId]
+            }
+            if (ordered.isEmpty()) return@withLock false
+            for (r in found) {
+                songCache[r.album.id] = r.songs
+            }
+            _albums.value = ordered
+            persist(ids, ordered)
+            if (found.isNotEmpty()) {
+                lastSyncedAccount = acc
+                lastSyncedIds = ids
+                lastSyncedAt = now
+            }
+            true
+        }
+    }
+
+    /**
+     * 专辑墙封面列数（进程级，null = DataStore 尚未出值）：
+     * 与 [hiddenState] 同款提到单例——卡片若用 rememberPreference 首帧出默认 3 列、
+     * 下一帧才回流真实列数，从任意界面回主页的每次重组合都会把 grid 重排一次
+     * （"专辑墙非 3 列时回主页要动一下"的根因）；进程级状态跨 tab 切换稳定。
+     */
+    private val _columnsState = MutableStateFlow<Int?>(null)
+    val columnsState: StateFlow<Int?> = _columnsState.asStateFlow()
+
+    /** 启动时调用一次：持续跟 DataStore 的列数回流进 [columnsState]。 */
+    fun watchColumns(context: Context) {
+        val ds = context.applicationContext.dataStore
+        watcherScope.launch {
+            ds.data.collect { prefs -> _columnsState.value = prefs[pinnedAlbumColumnsKey] ?: 3 }
+        }
+    }
+
+    /** 写列数（DataStore），watcher 回流后 UI 自动跟上。 */
+    suspend fun setColumns(value: Int) {
+        val s = store ?: return
+        s.edit { it[pinnedAlbumColumnsKey] = value }
+    }
+
+    /** 置顶 / 取消置顶单个专辑（内存 + 落盘；新增时顺带拉取详情 + 曲目）。 */
+    suspend fun togglePin(album: Album) {
+        val current = _albums.value
+        val added = album.id !in current.map { it.id }
+        _albums.value = if (added) {
+            listOf(album) + current
+        } else {
+            current.filterNot { it.id == album.id }.also { songCache.remove(album.id) }
+        }
+        persist(_albums.value.map { it.id }, _albums.value)
+        if (added) sync(force = true)
+    }
+
+    /** 编辑模式拖拽排序（内存 + 落盘，不拉网络）。 */
+    suspend fun reorder(orderedIds: List<Long>) {
+        val current = _albums.value
+        val next = orderedIds.mapNotNull { id -> current.firstOrNull { it.id == id } }
+        _albums.value = next
+        persist(orderedIds, next)
+    }
+
+    /** 退出登录：清内存态（磁盘缓存保留，重新登录后 [sync] 会刷新）。 */
+    fun resetOnLogout() {
+        _albums.value = emptyList()
+        _cacheLoaded.value = false
+        songCache.clear()
+        lastSyncedAccount = ""
+        lastSyncedIds = emptyList()
+        lastSyncedAt = 0L
+    }
+
+    /**
+     * 多选弹窗"应用"：[finalIds] 是最终置顶集合（保留已有顺序、新增追加、
+     * 未勾选的移除）。[seeds] 是选中专辑的桩数据（/album/sublist 自带字段），
+     * 拉详情失败时兜底直接上墙；已有专辑保留本地数据。
+     */
+    suspend fun applyPinned(finalIds: List<Long>, seeds: List<Album> = emptyList()) {
+        val current = _albums.value
+        val kept = current.filter { it.id in finalIds }
+        _albums.value = kept
+        val newIds = finalIds - kept.map { it.id }.toSet()
+        if (newIds.isNotEmpty()) {
+            // 新专辑先把桩数据顶上去，详情随后补拉；全部失败也能显示
+            _albums.value = kept + newIds.mapNotNull { seedId -> seeds.firstOrNull { it.id == seedId } }
+            persist(_albums.value.map { it.id }, _albums.value)
+            sync(force = true, extraIds = newIds, seeds = seeds)
+        } else {
+            persist(finalIds, kept)
+        }
+    }
+
+    private suspend fun persist(ids: List<Long>, albums: List<Album>) {
+        val s = store ?: return
+        s.edit { prefs ->
+            prefs[pinnedAlbumIdsKey] = ids.joinToString(",")
+            prefs[pinnedAlbumsCacheKey] = json.encodeToString(albums)
+            prefs[pinnedAlbumsAccountKey] = accountKey()
+        }
+    }
+
+    private fun readIds(prefs: Preferences): List<Long> =
+        prefs[pinnedAlbumIdsKey].orEmpty().split(",").mapNotNull { it.toLongOrNull() }
+
+    /**
+     * 账号作用域用 DataStore 的 userId（登录时由 LibraryScreenViewModel 写入，退出归 0）：
+     * "uid:<id>"，未登录为 "guest"。
+     * 历史上这里哈希 cookie 的 MUSIC_U——NCM 刷新会话会换发新 MUSIC_U，指纹跟着变，
+     * 重启后 [loadCache] 误判"账号不匹配"清掉专辑墙缓存。展示缓存的账号隔离不需要 cookie。
+     */
+    private suspend fun accountKey(): String {
+        val s = store ?: return GUEST_KEY
+        val userId = s.data.first()[userIdKye] ?: 0L
+        return if (userId == 0L) GUEST_KEY else "uid:$userId"
+    }
+}

@@ -1,0 +1,701 @@
+package com.rcmiku.ncmapi.model
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.json.JsonElement
+
+// ========== Core models ==========
+
+@Serializable
+data class Artist(
+    val id: Long = 0,
+    val name: String = ""
+)
+
+@Serializable
+data class SongAlbum(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("picUrl") val picUrl: String = "",
+    val pic: Long = 0
+)
+
+@Serializable
+data class Song(
+    val id: Long = 0,
+    val name: String = "",
+    val ar: List<Artist> = emptyList(),
+    val al: SongAlbum = SongAlbum(),
+    val dt: Long = 0,
+    val mv: Long = 0,
+    val alia: List<String> = emptyList(),
+    val fee: Int = 0,
+    val privilege: SongPrivilege? = null
+)
+
+@Serializable
+data class SongPrivilege(
+    val st: Int = 0,
+    val pl: Int = 0,
+    val dl: Int = 0,
+    val fl: Int = 0,
+    val maxbr: Int = 0
+)
+
+@Serializable
+data class Album(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("picUrl") val picUrl: String = "",
+    val artist: Artist = Artist(),
+    val artists: List<Artist> = emptyList(),
+    val size: Int = 0,
+    @SerialName("publishTime") val publishTime: Long = 0,
+    val company: String? = null,
+    val description: String = ""
+)
+
+@Serializable
+data class SubAlbum(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("picUrl") val picUrl: String = "",
+    val artist: Artist? = null,
+    val artists: List<Artist> = emptyList(),
+    val size: Int = 0,
+    @SerialName("subTime") val subTime: Long = 0
+)
+
+@Serializable
+data class Playlist(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("coverImgUrl") val coverImgUrl: String = "",
+    @SerialName("picUrl") val rawPicUrl: String = "",
+    @SerialName("playCount") val playCount: Double = 0.0,
+    @SerialName("trackCount") val trackCount: Int = 0,
+    val creator: PlaylistCreator? = null,
+    val description: String = "",
+    @SerialName("createTime") val createTime: Long = 0,
+    val subscribed: Boolean = false,
+    @SerialName("specialType") val specialType: Int = 0
+) {
+    val picUrl: String get() = coverImgUrl.ifBlank { rawPicUrl }
+}
+
+@Serializable
+data class PlaylistCreator(
+    val userId: Long = 0,
+    val nickname: String = "",
+    @SerialName("avatarUrl") val avatarUrl: String? = null
+)
+
+@Serializable
+data class PlaylistV1(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("coverImgUrl") val coverImgUrl: String = "",
+    @SerialName("trackCount") val trackCount: Int = 0,
+    @SerialName("containTracks") val containsTracks: Boolean = false,
+    @SerialName("playCount") val playCount: Double = 0.0,
+    val creator: PlaylistCreator? = null,
+    val description: String = ""
+)
+
+@Serializable
+data class VoiceBaseInfo(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("coverUrl") val coverUrl: String = "",
+    @SerialName("picUrl") val rawPicUrl: String = "",
+    @SerialName("programCount") val programCount: Int = 0
+) {
+    val picUrl: String get() = coverUrl.ifBlank { rawPicUrl }
+}
+
+@Serializable
+data class Radio(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("coverUrl") val coverUrl: String = "",
+    @SerialName("mainSong") val mainSong: RadioMainSong = RadioMainSong(),
+    val dj: RadioDj? = null,
+    @SerialName("programCount") val programCount: Int = 0,
+    @SerialName("createTime") val createTime: Long = 0
+) {
+    val picUrl: String get() = coverUrl
+}
+
+@Serializable
+data class RadioMainSong(
+    val id: Long = 0,
+    val name: String = "",
+    val artists: List<Artist> = emptyList(),
+    val duration: Long = 0
+)
+
+@Serializable
+data class RadioDj(
+    val nickname: String = "",
+    @SerialName("avatarUrl") val avatarUrl: String = ""
+)
+
+// ========== Cloud Song models ==========
+
+@Serializable
+data class CloudSong(
+    @SerialName("simpleSong") val simpleSong: SimpleSong = SimpleSong(),
+    val artist: String = "",
+    val album: String = "",
+    @SerialName("songId") val songId: Long = 0,
+    @SerialName("fileSize") val fileSize: Long = 0
+)
+
+@Serializable
+data class SimpleSong(
+    val id: Long = 0,
+    val name: String = "",
+    val al: SongAlbum? = null,
+    val ar: List<Artist> = emptyList(),
+    val dt: Long = 0
+)
+
+// ========== Search models ==========
+
+@Serializable
+data class SearchArtist(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("picUrl") val picUrl: String = "",
+    @SerialName("cover") val coverUrl: String = "",
+    @SerialName("albumSize") val albumSize: Int = 0,
+    @SerialName("musicSize") val musicSize: Int = 0,
+    val briefDesc: String = ""
+) {
+    val cover: String get() = picUrl.ifBlank { coverUrl }
+}
+
+@Serializable
+data class SearchUser(
+    @SerialName("userId") val id: Long = 0,
+    val nickname: String = "",
+    @SerialName("avatarUrl") val avatarUrl: String = "",
+    val signature: String = "",
+    val userType: Int = 0,
+    // NCM 关注/粉丝列表原生携带：VIP 等级、是否互关（与私信 recentcontact 同源口径）
+    val vipType: Int = 0,
+    val mutual: Boolean = false,
+    // NCM 粉丝列表 (getfolloweds) 的分页游标：取上一页最后一个元素的 time
+    @SerialName("time") val time: Long = 0
+)
+
+data class SearchResources(
+    val song: Song? = null,
+    val album: Album? = null,
+    val artist: SearchArtist? = null,
+    val playlist: Playlist? = null,
+    val user: SearchUser? = null,
+    val voice: VoiceBaseInfo? = null,
+    val baseInfo: VoiceBaseInfo? = null
+)
+
+fun SearchResources.toAlbumList(): Album? = album
+fun SearchResources.toSearchArtist(): SearchArtist? = artist
+fun SearchResources.toPlaylist(): Playlist? = playlist
+fun SearchResources.toSearchUser(): SearchUser? = user
+
+data class SearchData(
+    val resources: List<SearchResources> = emptyList(),
+    val more: Boolean = false
+)
+
+data class SearchResultWrapper(
+    val data: SearchData = SearchData()
+)
+
+// ========== Response wrappers ==========
+
+@Serializable
+data class AlbumDetailResponse(
+    val songs: List<Song> = emptyList(),
+    val album: Album = Album()
+)
+
+@Serializable
+data class AlbumInfoResponse(
+    val album: Album = Album(),
+    @SerialName("isSub") val isSub: Boolean = false
+)
+
+@Serializable
+data class ArtistHeadInfoResponse(
+    val data: ArtistHeadData = ArtistHeadData()
+)
+
+@Serializable
+data class ArtistHeadData(
+    val artist: SearchArtist = SearchArtist(),
+    val user: ArtistUser? = null,
+    val briefDesc: String = ""
+)
+
+@Serializable
+data class ArtistSongsResponse(
+    val songs: List<Song> = emptyList(),
+    val more: Boolean = false
+)
+
+/** 歌手简介（/artist/desc → weapi /api/artist/introduction，2.0.5 数据层接入）。 */
+@Serializable
+data class ArtistDescResponse(
+    val code: Int = 0,
+    val briefDesc: String = "",
+    val introduction: List<ArtistDescSection> = emptyList(),
+    val count: Int = 0
+)
+
+@Serializable
+data class ArtistDescSection(
+    val ti: String = "",
+    val txt: String = ""
+)
+
+@Serializable
+data class ArtistSublistResponse(
+    val data: List<SearchArtist> = emptyList(),
+    @SerialName("hasMore") val hasMore: Boolean = false,
+    val count: Int = 0,
+    @SerialName("more") val more: Boolean = false
+)
+
+@Serializable
+data class ArtistFollowCountResponse(
+    val data: ArtistFollowCountData = ArtistFollowCountData()
+)
+
+@Serializable
+data class ArtistFollowCountData(
+    @SerialName("isFollow") val isFollow: Boolean = false,
+    val follow: Boolean = false,
+    val fansCnt: Long = 0,
+    val followCnt: Long = 0,
+    val followDay: String = "",
+    @SerialName("followDayCnt") val followDayCnt: Long = 0
+) {
+    val followed: Boolean get() = isFollow || follow
+}
+
+@Serializable
+data class SimiArtistResponse(
+    val artists: List<SearchArtist> = emptyList()
+)
+
+@Serializable
+data class ArtistUser(
+    val followed: Boolean = false
+)
+
+@Serializable
+data class ArtistTopSong(
+    val songs: List<Song> = emptyList()
+)
+
+@Serializable
+data class ArtistAlbumResponse(
+    @SerialName("hotAlbums") val hotAlbums: List<Album> = emptyList(),
+    val more: Boolean = false
+)
+
+@Serializable
+data class LyricResponse(
+    val lrc: LyricContent? = null,
+    val tlyric: LyricContent? = null,
+    val klyric: LyricContent? = null,
+    val romalrc: LyricContent? = null,
+    val yrc: LyricContent? = null
+)
+
+@Serializable
+data class LyricContent(
+    val lyric: String = ""
+)
+
+@Serializable
+data class CommentNewResponse(
+    val data: CommentNewData = CommentNewData(),
+    val code: Int = 0
+)
+
+/**
+ * 楼中楼（/comment/floor）响应。NCM 端点 /api/resource/comment/floor/get，weapi 明文读。
+ * ownerComment=父评论回显，comments=楼层（Comment 同款结构），time=下一页游标（毫秒时间戳，
+ * 缺省 -1 取第一页），hasMore/totalCount 同 /comment/new 语义。
+ */
+@Serializable
+data class CommentFloorResponse(
+    val data: CommentFloorData = CommentFloorData(),
+    val code: Int = 0
+)
+
+@Serializable
+data class CommentFloorData(
+    val comments: List<Comment> = emptyList(),
+    @SerialName("ownerComment") val ownerComment: Comment? = null,
+    @SerialName("hasMore") val hasMore: Boolean = false,
+    @SerialName("totalCount") val totalCount: Long = 0,
+    // 翻页游标：下一页传上一页最后一项的 time（毫秒）。
+    val time: Long = -1
+)
+
+@Serializable
+data class CommentNewData(
+    val comments: List<Comment> = emptyList(),
+    @SerialName("totalCount") val totalCount: Long = 0,
+    @SerialName("hasMore") val hasMore: Boolean = false,
+    // NCM /comment/new 的 cursor 形状不固定：热度排序回字符串（如 "normalHot# 032"），
+    // 时间排序回数字时间戳。统一按 JsonElement 解析，UI 侧取 jsonPrimitive.content。
+    @SerialName("cursor") val cursor: JsonElement? = null
+)
+
+@Serializable
+data class Comment(
+    @SerialName("commentId") val commentId: Long = 0,
+    val content: String = "",
+    val time: Long = 0,
+    @SerialName("timeStr") val timeStr: String = "",
+    @SerialName("likedCount") val likedCount: Long = 0,
+    val liked: Boolean = false,
+    @SerialName("replyCount") val replyCount: Int = 0,
+    val user: CommentUser = CommentUser(),
+    // 省级 IP 归属地（NCM 脱敏：ip 恒 null，location=省份；空串=未定位，UI 侧不展示）。
+    val ipLocation: IpLocation? = null,
+    @SerialName("beReplied") val beReplied: List<CommentReply> = emptyList()
+)
+
+@Serializable
+data class IpLocation(
+    val ip: String? = null,
+    val location: String = ""
+)
+
+@Serializable
+data class CommentUser(
+    @SerialName("userId") val userId: Long = 0,
+    val nickname: String = "",
+    @SerialName("avatarUrl") val avatarUrl: String = ""
+)
+
+@Serializable
+data class CommentReply(
+    val content: String = "",
+    val user: CommentUser = CommentUser()
+)
+
+/** 下载链响应：官方 enhance/download/url 的 data 是单个对象（非数组）。 */
+@Serializable
+data class SongDownloadResponse(
+    val data: SongUrl = SongUrl()
+)
+
+@Serializable
+data class SongUrlResponse(
+    val data: List<SongUrl> = emptyList()
+)
+
+@Serializable
+data class SongUrl(
+    val id: Long = 0,
+    val url: String? = null,
+    val br: Int = 0,
+    val type: String? = null,
+    val level: String? = null,
+    val time: Long = 0,
+    val freeTrialInfo: JsonElement? = null,
+    val freeTrialPrivilege: JsonElement? = null,
+    val freeTimeTrialPrivilege: JsonElement? = null,
+)
+
+@Serializable
+data class PlaylistDetailResponse(
+    val playlist: PlaylistDetail = PlaylistDetail()
+)
+
+/** /song/detail（weapi /api/v3/song/detail）响应：只取 songs。 */
+@Serializable
+data class SongDetailResponse(
+    val songs: List<Song> = emptyList()
+)
+
+/**
+ * v6 歌单详情 trackIds 的单项：对象数组（每项含 id 及 v/t/at 等附加字段）。
+ * 只取 id；附加字段由全局 Json 的 ignoreUnknownKeys=true 忽略（见 utils/JsonUtil.kt）。
+ */
+@Serializable
+data class PlaylistTrackId(
+    val id: Long = 0
+)
+
+@Serializable
+data class PlaylistDetail(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("coverImgUrl") val coverImgUrl: String = "",
+    val tracks: List<Song> = emptyList(),
+    val songs: List<Song> = emptyList(),
+    // 2.1.2 #7：v6 detail 只回少量 tracks（实测 10933 首的歌单仅回 10 首），
+    // 全量有序 id 在 trackIds 里；此前模型无此字段被解析丢弃，UI 只剩 10 首。
+    // PlaylistApi.cachedPlaylistDetail 据此分批调 /song/detail 补齐 tracks。
+    val trackIds: List<PlaylistTrackId> = emptyList(),
+    val creator: PlaylistCreator? = null,
+    val description: String = "",
+    @SerialName("trackCount") val trackCount: Int = 0,
+    @SerialName("trackUpdateTime") val trackUpdateTime: Long = 0,
+    @SerialName("playCount") val playCount: Double = 0.0,
+    @SerialName("specialType") val specialType: Int = 0
+) {
+    fun getAllTracks(): List<Song> = tracks.ifEmpty { songs }
+}
+
+@Serializable
+data class PlaylistInfoResponse(
+    val playlist: Playlist = Playlist(),
+    val subscribed: Boolean = false
+)
+
+@Serializable
+data class TopListResponse(
+    val list: List<Playlist> = emptyList()
+)
+
+@Serializable
+data class RadioInfoResponse(
+    val data: RadioInfoData = RadioInfoData()
+)
+
+@Serializable
+data class RadioInfoData(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("coverUrl") val coverUrl: String = "",
+    val dj: RadioDj? = null,
+    @SerialName("programCount") val programCount: Int = 0,
+    @SerialName("subCount") val subCount: Long = 0,
+    @SerialName("playCount") val playCount: Double = 0.0,
+    val desc: String? = null
+) {
+    val picUrl: String get() = coverUrl
+}
+
+@Serializable
+data class ProgramRadioResponse(
+    val data: ProgramRadioData = ProgramRadioData()
+)
+
+@Serializable
+data class ProgramRadioData(
+    val programs: List<Radio> = emptyList(),
+    val more: Boolean = false
+)
+
+@Serializable
+data class DailySongsResponse(
+    val data: DailySongsData = DailySongsData()
+)
+
+@Serializable
+data class DailySongsData(
+    @SerialName("dailySongs") val dailySongs: List<Song> = emptyList()
+)
+
+@Serializable
+data class PersonalFmResponse(
+    val data: List<PersonalFmSong> = emptyList()
+)
+
+@Serializable
+data class PersonalFmSong(
+    val id: Long = 0,
+    val name: String = "",
+    val artists: List<Artist> = emptyList(),
+    val album: SongAlbum = SongAlbum(),
+    val duration: Long = 0,
+    val fee: Int = 0,
+    val privilege: SongPrivilege? = null
+) {
+    fun toSong(): Song = Song(
+        id = id,
+        name = name,
+        ar = artists,
+        al = album,
+        dt = duration,
+        fee = fee,
+        privilege = privilege
+    )
+}
+
+@Serializable
+data class PersonalizedPlaylistResponse(
+    val result: List<Playlist> = emptyList()
+)
+
+@Serializable
+data class RecommendPlaylistResponse(
+    val result: List<Playlist> = emptyList(),
+    val recommend: List<Playlist> = emptyList()
+)
+
+@Serializable
+data class NewAlbumResponse(
+    val albums: List<Album> = emptyList(),
+    val weekData: List<Album> = emptyList(),
+    val monthData: List<Album> = emptyList()
+)
+
+@Serializable
+data class SearchSuggestKeywordResponse(
+    val data: SearchSuggestData? = null
+)
+
+@Serializable
+data class SearchSuggestData(
+    val suggests: List<SearchSuggestItem> = emptyList()
+)
+
+@Serializable
+data class SearchSuggestItem(
+    val keyword: String = ""
+)
+
+@Serializable
+data class CloudSongResponse(
+    val data: List<CloudSong> = emptyList(),
+    @SerialName("hasMore") val hasMore: Boolean = false
+)
+
+@Serializable
+data class AlbumSublistResponse(
+    val data: List<SubAlbum> = emptyList(),
+    @SerialName("hasMore") val hasMore: Boolean = false
+)
+
+@Serializable
+data class SongRecordResponse(
+    @SerialName("weekData") val weekData: List<RecordSong> = emptyList(),
+    @SerialName("allData") val allData: List<RecordSong> = emptyList()
+)
+
+@Serializable
+data class RecordSong(
+    @SerialName("playCount") val playCount: Int = 0,
+    val song: Song = Song()
+)
+
+typealias RecordResponse = SongRecordResponse
+
+@Serializable
+data class UserInfoBatch(
+    val account: UserAccount = UserAccount(),
+    val profile: UserProfile = UserProfile(),
+    val level: UserLevel = UserLevel()
+)
+
+@Serializable
+data class UserDetailResponse(
+    val profile: UserProfile = UserProfile()
+)
+
+@Serializable
+data class UserAccount(
+    val id: Long = 0,
+    val profile: UserProfile = UserProfile()
+)
+
+@Serializable
+data class UserProfile(
+    val userId: Long = 0,
+    val nickname: String = "",
+    @SerialName("avatarUrl") val avatarUrl: String = "",
+    val signature: String = "",
+    val vipType: Int = 0,
+    val userType: Int = -1,
+    @SerialName("follows") val followsCount: Int = 0,
+    @SerialName("followeds") val followedsCount: Int = 0,
+    val followed: Boolean = false
+)
+
+@Serializable
+data class UserLevel(
+    val data: UserLevelData = UserLevelData()
+)
+
+@Serializable
+data class UserLevelData(
+    val level: Int = 0
+)
+
+@Serializable
+data class FavoriteSongResponse(
+    val data: FavoriteSongData? = null,
+    val ids: List<Long> = emptyList()
+)
+
+@Serializable
+data class UserFollowResponse(
+    @SerialName("follow") val follows: List<SearchUser> = emptyList(),
+    @SerialName("followeds") val followeds: List<SearchUser> = emptyList(),
+    @SerialName("more") val hasMore: Boolean = false,
+    @SerialName("size") val size: Int = 0
+)
+
+@Serializable
+data class FavoriteSongData(
+    val id: Long = 0
+)
+
+@Serializable
+data class UserPlaylistResponse(
+    val data: UserPlaylistData = UserPlaylistData()
+)
+
+@Serializable
+data class UserPlaylistData(
+    val playlist: List<Playlist> = emptyList()
+)
+
+@Serializable
+data class UserPlaylistV1Response(
+    val playlist: List<PlaylistV1> = emptyList()
+)
+
+@Serializable
+data class ApiCodeResponse(
+    val code: Int = 0,
+    val message: String? = null,
+    val msg: String? = null
+)
+
+/**
+ * 头像上传落库响应。直连 NCM eapi /user/avatar/upload/v1 时顶层 code 即业务码
+ * （成功 200，未登录/风控 301，参数错 400），不再有代理的外层 200 包装。
+ * data 块为可选透传（NCM 可能回 url_pre / imgId），不再作为成功判定依据。
+ */
+@Serializable
+data class AvatarUploadResponse(
+    val code: Int = 0,
+    val message: String? = null,
+    val msg: String? = null,
+    val data: AvatarUploadData? = null
+) {
+    val isSuccess: Boolean get() = code == 200
+    val errorMessage: String?
+        get() = message ?: msg ?: data?.message
+}
+
+@Serializable
+data class AvatarUploadData(
+    val code: Int = 0,
+    val message: String? = null,
+    val msg: String? = null,
+    @SerialName("url_pre") val urlPre: String? = null,
+    val imgId: String? = null
+)

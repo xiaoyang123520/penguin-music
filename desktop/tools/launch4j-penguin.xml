@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Launch4j config: 企鹅音乐 PenguinMusic.exe (2.2.0). Same structure as 1.x:
+     fat jar embedded, bundled relative jre/ folder. -->
+<launch4jConfig>
+  <dontWrapJar>false</dontWrapJar>
+  <headerType>gui</headerType>
+  <jar>jussichords-all.jar</jar>
+  <outfile>PenguinMusic.exe</outfile>
+  <errTitle>企鹅音乐</errTitle>
+  <cmdLine></cmdLine>
+  <chdir>.</chdir>
+  <priority>normal</priority>
+  <downloadUrl>https://adoptium.net/</downloadUrl>
+  <supportUrl>https://github.com/easyTIDollar/jussichords</supportUrl>
+  <stayAlive>false</stayAlive>
+  <restartOnCrash>false</restartOnCrash>
+  <manifest></manifest>
+  <icon></icon>
+  <!-- 2.0.5 起：网页登录 JCEF 运行时以松散 jar 随包分发（jcef\ 目录与 exe 同级）。
+       natives jar 不能并进 fat jar（jcefmaven 按 classpath 条目定位平台
+       natives 并解压），故走 launch4j 附加 classpath；jcef-api 的类已并入
+       fat jar，org.cef API 由 fat jar 提供。 -->
+  <classPath>
+    <mainClass>com.jussicodes.music.desktop.DesktopMainKt</mainClass>
+    <cp>jcef\jcefmaven-132.3.1.jar</cp>
+    <cp>jcef\jcef-natives-windows-amd64.jar</cp>
+    <cp>jcef\jogl-all.jar</cp>
+    <cp>jcef\gluegen-rt.jar</cp>
+    <cp>jcef\commons-compress-1.27.1.jar</cp>
+    <cp>jcef\commons-io-2.16.1.jar</cp>
+    <cp>jcef\gson-2.11.0.jar</cp>
+  </classPath>
+  <jre>
+    <path>jre</path>
+    <requiresJdk>false</requiresJdk>
+    <requires64Bit>true</requires64Bit>
+    <minVersion>17.0.0</minVersion>
+    <maxHeapSize>1024</maxHeapSize>
+    <initialHeapSize>128</initialHeapSize>
+  </jre>
+  <versionInfo>
+    <fileVersion>2.2.0.0</fileVersion>
+    <txtFileVersion>2.2.0</txtFileVersion>
+    <fileDescription>企鹅音乐 PenguinMusic（基于开源项目 jussichords 2.4.5 的 Windows 桌面版）</fileDescription>
+    <copyright>jussichords contributors</copyright>
+    <productVersion>2.2.0.0</productVersion>
+    <txtProductVersion>2.2.0</txtProductVersion>
+    <productName>企鹅音乐 PenguinMusic</productName>
+    <internalName>penguinmusic</internalName>
+    <originalFilename>PenguinMusic.exe</originalFilename>
+  </versionInfo>
+</launch4jConfig>

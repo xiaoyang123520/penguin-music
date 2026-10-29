@@ -1,0 +1,121 @@
+package com.jussicodes.music.ui.theme
+
+import android.graphics.Bitmap
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+@Composable
+internal fun rememberArtworkSeed(artwork: Any?): Color? {
+    val context = LocalContext.current.applicationContext
+    return produceState<Color?>(initialValue = null, artwork, context) {
+        if (artwork == null) {
+            value = null
+            return@produceState
+        }
+
+        value = withContext(Dispatchers.IO) {
+            try {
+                val request = ImageRequest.Builder(context)
+                    .data(artwork)
+                    .allowHardware(false)
+                    .build()
+                val result = context.imageLoader.execute(request) as? SuccessResult
+                result?.image
+                    ?.toBitmap(width = SampleSize, height = SampleSize)
+                    ?.let(::extractArtworkSeed)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }.value
+}
+
+/**
+ * 主页背景图取色种子：[path] 指向的图片可读时，
+ * 用与封面取色完全一致的统计方式提取种子色；空路径/读失败返回 null（回落壁纸配色）。
+ * 与 [rememberArtworkSeed] 同构：produceState 无条件，key 为 path，空值在闭包内处理，
+ * 避免 enabled 翻转时 remember/produceState 数量变化破坏组合稳定性。
+ */
+@Composable
+internal fun rememberHomeBgSeed(path: String): Color? {
+    val context = LocalContext.current.applicationContext
+    val model = path.trim().takeIf { it.isNotEmpty() }
+    return produceState<Color?>(initialValue = null, model, context) {
+        if (model == null) {
+            value = null
+            return@produceState
+        }
+
+        value = withContext(Dispatchers.IO) {
+            try {
+                val request = ImageRequest.Builder(context)
+                    .data(model)
+                    .allowHardware(false)
+                    .build()
+                val result = context.imageLoader.execute(request) as? SuccessResult
+                result?.image
+                    ?.toBitmap(width = SampleSize, height = SampleSize)
+                    ?.let(::extractArtworkSeed)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }.value
+}
+
+internal fun extractArtworkSeed(bitmap: Bitmap): Color? {
+    val pixels = IntArray(bitmap.width * bitmap.height)
+    bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+
+    val weights = FloatArray(HueBucketCount)
+    val red = FloatArray(HueBucketCount)
+    val green = FloatArray(HueBucketCount)
+    val blue = FloatArray(HueBucketCount)
+    val hsv = FloatArray(3)
+
+    pixels.forEach { pixel ->
+        if (android.graphics.Color.alpha(pixel) < 160) return@forEach
+        android.graphics.Color.colorToHSV(pixel, hsv)
+        val saturation = hsv[1]
+        val brightness = hsv[2]
+        if (brightness < 0.08f || (brightness > 0.97f && saturation < 0.06f)) {
+            return@forEach
+        }
+
+        val bucket = ((hsv[0] / 360f) * HueBucketCount)
+            .toInt()
+            .coerceIn(0, HueBucketCount - 1)
+        val weight = (0.25f + saturation * 0.75f) * (0.65f + brightness * 0.35f)
+        weights[bucket] += weight
+        red[bucket] += android.graphics.Color.red(pixel) * weight
+        green[bucket] += android.graphics.Color.green(pixel) * weight
+        blue[bucket] += android.graphics.Color.blue(pixel) * weight
+    }
+
+    val bucket = weights.indices.maxByOrNull(weights::get) ?: return null
+    val weight = weights[bucket]
+    if (weight <= 0f) return null
+
+    val average = android.graphics.Color.rgb(
+        (red[bucket] / weight).toInt().coerceIn(0, 255),
+        (green[bucket] / weight).toInt().coerceIn(0, 255),
+        (blue[bucket] / weight).toInt().coerceIn(0, 255),
+    )
+    android.graphics.Color.colorToHSV(average, hsv)
+    hsv[1] = hsv[1].coerceIn(0.22f, 0.86f)
+    hsv[2] = hsv[2].coerceIn(0.36f, 0.88f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+private const val SampleSize = 72
+private const val HueBucketCount = 24

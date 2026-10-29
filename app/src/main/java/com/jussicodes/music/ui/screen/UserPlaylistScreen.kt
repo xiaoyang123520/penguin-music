@@ -1,0 +1,159 @@
+package com.jussicodes.music.ui.screen
+
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavHostController
+import com.jussicodes.music.R
+import com.jussicodes.music.LocalPlayerState
+import com.jussicodes.music.constants.gridCoverSize
+import com.jussicodes.music.constants.MiniPlayerHeight
+import com.jussicodes.music.ui.components.GridThumbnailImage
+import com.jussicodes.music.ui.components.PlaylistGridItem
+import com.jussicodes.music.ui.navigation.PlaylistNav
+import com.jussicodes.music.viewModel.UserPlaylistScreenViewModel
+import com.rcmiku.ncmapi.api.account.UserPlaylistType
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@Composable
+fun UserPlaylistScreen(
+    navController: NavHostController,
+    userPlaylistScreenViewModel: UserPlaylistScreenViewModel = hiltViewModel(),
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope
+) {
+    val type = userPlaylistScreenViewModel.userPlaylistType
+    val playlistState by userPlaylistScreenViewModel.playlist.collectAsState()
+    val isLoading by userPlaylistScreenViewModel.isLoading.collectAsState()
+    val playlists = playlistState?.data?.playlist.orEmpty()
+    // 小播放器是否显示（有歌在队列）：列表末尾避让空白块只在有歌时留
+    val hasMiniPlayer = (LocalPlayerState.current?.player?.mediaItemCount ?: 0) != 0
+
+    Scaffold(topBar = {
+        TopAppBar(
+            title = {
+                Text(
+                    text = when (type) {
+                        UserPlaylistType.CREATE -> stringResource(R.string.create_playlist)
+                        UserPlaylistType.COLLECT -> stringResource(R.string.collect_playlist)
+                        null -> {
+                            ""
+                        }
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = {
+                    navController.navigateUp()
+                }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = null
+                    )
+                }
+            },
+        )
+    }) { padding ->
+        LazyVerticalGrid(
+            contentPadding = padding,
+            columns = GridCells.Adaptive(gridCoverSize()),
+        ) {
+            if (isLoading && playlists.isEmpty()) {
+                items(List(10) { it }) {
+                    PlaylistLoadingGridItem()
+                }
+            } else {
+                with(sharedTransitionScope) {
+                    items(playlists, key = { it.id }) {
+                        PlaylistGridItem(
+                            playlist = it, maxLine = 2, modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(
+                                    onClick = {
+                                        navController.navigate(
+                                            PlaylistNav(
+                                                playlistId = it.id,
+                                                limit = it.trackCount
+                                            )
+                                        )
+                                    },
+                                ), thumbnailContent = {
+                                GridThumbnailImage(
+                                    url = it.picUrl,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .sharedElement(
+                                            sharedTransitionScope.rememberSharedContentState(
+                                                key = it.id
+                                            ),
+                                            animatedVisibilityScope = animatedContentScope
+                                        )
+                                )
+                            })
+                    }
+                }
+            }
+
+            item {
+                // 小播放器避让：有歌时末尾垫 64dp，最后一行不被悬浮播放器盖住
+                if (hasMiniPlayer) Spacer(modifier = Modifier.height(MiniPlayerHeight))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistLoadingGridItem() {
+    val placeholderColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    Column(modifier = Modifier.padding(12.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(placeholderColor)
+        )
+        Box(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .fillMaxWidth(0.72f)
+                .height(16.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(placeholderColor)
+        )
+    }
+}

@@ -1,0 +1,194 @@
+import com.android.build.gradle.tasks.PackageAndroidArtifact
+import java.util.Properties
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.protobuf)
+}
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.isFile) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun localProperty(name: String): String? = localProperties.getProperty(name)
+
+fun releaseConfig(name: String): String? =
+    System.getenv(name)?.takeIf { it.isNotBlank() } ?: localProperty(name)?.takeIf { it.isNotBlank() }
+
+android {
+    namespace = "com.jussicodes.music"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.jussicodes.music"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 45
+        versionName = "2.4.5"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        releaseConfig("RELEASE_STORE_FILE")?.let { releaseStoreFile ->
+            register("release") {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = releaseConfig("RELEASE_STORE_PASSWORD")
+                keyAlias = releaseConfig("RELEASE_KEY_ALIAS")
+                keyPassword = releaseConfig("RELEASE_KEY_PASSWORD")
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfigs.findByName("release")?.let {
+                signingConfig = it
+            }
+        }
+        debug {
+            applicationIdSuffix = ".debug"
+        }
+        register("canary") {
+            applicationIdSuffix = ".canary"
+            // CI 通过 -PCANARY_VERSION_SUFFIX=-canary.<UTC 年月日-时分秒> 注入唯一后缀（见 build.yml），默认 -canary
+            versionNameSuffix = (findProperty("CANARY_VERSION_SUFFIX") as? String) ?: "-canary"
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // canary 专用测试签名：keystore 由 CI(keytool) 构建时生成，不依赖 secrets，指纹每次不同可接受
+            val canaryStore = rootProject.file("canary-keystore.jks")
+            if (canaryStore.exists()) {
+                signingConfigs.create("canary") {
+                    storeFile = canaryStore
+                    storePassword = "jussichords-canary"
+                    keyAlias = "jussichords-canary"
+                    keyPassword = "jussichords-canary"
+                    enableV1Signing = true
+                    enableV2Signing = true
+                    enableV3Signing = true
+                }
+                signingConfig = signingConfigs.getByName("canary")
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+        resources {
+            excludes += setOf(
+                "META-INF/*.version", // https://stackoverflow.com/a/58956288
+                "META-INF/**/LICENSE.txt",
+                "DebugProbesKt.bin", // https://github.com/Kotlin/kotlinx.coroutines?tab=readme-ov-file#avoiding-including-the-debug-infrastructure-in-the-resulting-apk
+                "kotlin-tooling-metadata.json"
+            )
+            pickFirsts += "META-INF/androidx.compose.ui_ui.version" // For Layout Inspector
+        }
+    }
+
+    // https://stackoverflow.com/a/77745844
+    tasks.withType<PackageAndroidArtifact> {
+        doFirst { appMetadata.asFile.orNull?.writeText("") }
+    }
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:4.29.1"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                register("java") {
+                    option("lite")
+                }
+                register("kotlin") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.ui)
+    implementation(libs.androidx.ui.graphics)
+    implementation(libs.androidx.ui.tooling.preview)
+    implementation(libs.androidx.material3)
+    implementation(libs.androidx.material.icons.core)
+    // 官方服务器样式图标 Icons.Outlined.Dns (core 里没有 Dns/Lan/Storage)
+    implementation(libs.androidx.material.icons.extended)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.datastore)
+    implementation(libs.datastore.preferences)
+    implementation(libs.protobuf.kotlin.lite)
+    implementation(libs.media3)
+    implementation(libs.media3.database)
+    implementation(libs.media3.datasource)
+    implementation(libs.media3.session)
+    implementation(libs.hilt.android)
+    implementation(libs.androidx.hilt.navigation.compose)
+    ksp(libs.hilt.compiler)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+    implementation(libs.ktor.serialization.json)
+    implementation(libs.androidx.paging.runtime.ktx)
+    implementation(libs.androidx.paging.compose)
+    implementation(libs.kotlinx.datetime)
+    implementation(libs.reorderable)
+    implementation(project(":ncmapi"))
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.ui.test.junit4)
+    debugImplementation(libs.androidx.ui.tooling)
+    debugImplementation(libs.androidx.ui.test.manifest)
+}
