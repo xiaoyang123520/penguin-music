@@ -15,6 +15,28 @@ step() { echo "=== $* ==="; }
 step "gen strings"
 python3 "$D/tools/gen_strings.py" "$ROOT/app/src/main/res/values/strings.xml" "$D/build/gen"
 
+step "gen proto (protoc -> build/gen/com; required before compile proto)"
+# The generated proto sources are NOT committed; regenerate them from the
+# .proto files in the repo. protoc 29.1 was used for the shipped build
+# (matches protobuf-kotlin-lite 4.29.1). Put a protoc binary at
+# tools-dl/protoc/bin/protoc or have one on PATH.
+PROTOC="$(command -v protoc || true)"
+if [ -z "$PROTOC" ] && [ -x "$ROOT/tools-dl/protoc/bin/protoc" ]; then
+  PROTOC="$ROOT/tools-dl/protoc/bin/protoc"
+fi
+if [ -z "$PROTOC" ]; then
+  echo "ERROR: protoc not found (PATH or tools-dl/protoc/bin/protoc); cannot generate proto sources" >&2
+  exit 1
+fi
+"$PROTOC" -I "$ROOT/app/src/main/proto" \
+  --java_out=lite:"$D/build/gen" --kotlin_out=lite:"$D/build/gen" \
+  "$ROOT/app/src/main/proto/favorite_song_ids.proto" \
+  "$ROOT/app/src/main/proto/search_history.proto"
+if [ ! -f "$D/build/gen/com/jussicodes/music/FavoriteSongIds.java" ]; then
+  echo "ERROR: proto generation produced no output under build/gen/com" >&2
+  exit 1
+fi
+
 step "compile proto (kotlinc for .kt, javac for .java — kotlinc emits no Java classes)"
 PROTO_DIR="$D/build/proto-classes"
 rm -rf "$PROTO_DIR" && mkdir -p "$PROTO_DIR"
